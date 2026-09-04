@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hệ thống Đăng ký & Giám sát Ca Mô Phỏng</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-badge">HỆ THỐNG QUẢN LÝ DỮ LIỆU GOOGLE SHEETS</div>
+      <h1>Đăng ký & Giám sát Ca Thực hành Mô phỏng</h1>
+      <p class="subtitle">Đồng bộ trực tiếp 2 chiều giữa Ứng dụng Web và Google Sheets</p>
+    </header>
+
+    <div class="main-grid">
+      <!-- Cột 1: Form Đăng ký (POST) -->
+      <section class="card form-card">
+        <h2>📝 Đăng ký ca mới</h2>
+        <p class="card-desc">Gửi thông tin lượt đăng ký mới vào bảng tính.</p>
+
+        <form id="requestForm">
+          <div class="form-group">
+            <label for="maNhom">Mã nhóm <span class="required">*</span></label>
+            <input type="text" id="maNhom" name="maNhom" required maxlength="12" placeholder="VD: NHOM-09" autofocus>
+          </div>
+
+          <div class="form-group">
+            <label for="tram">Trạm mô phỏng <span class="required">*</span></label>
+            <select id="tram" name="tram" required>
+              <option value="Trạm hồi sức cơ bản">Trạm hồi sức cơ bản</option>
+              <option value="Trạm tiêm truyền">Trạm tiêm truyền</option>
+              <option value="Trạm giao tiếp người bệnh">Trạm giao tiếp người bệnh</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="ca">Ca học <span class="required">*</span></label>
+            <select id="ca" name="ca" required>
+              <option value="Sáng">Sáng</option>
+              <option value="Chiều">Chiều</option>
+            </select>
+          </div>
+
+          <button type="submit" id="btnSubmit" class="btn btn-primary">
+            <span class="btn-text">Gửi đăng ký</span>
+            <span class="spinner" style="display: none;"></span>
+          </button>
+
+          <div id="status" class="status-box" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <!-- Cột 2: Thống kê & Danh sách (GET) -->
+      <section class="card dashboard-card">
+        <div class="dashboard-header">
+          <div>
+            <h2>📊 Bảng điều khiển & Danh sách</h2>
+            <p class="card-desc">Dữ liệu thời gian thực từ Google Sheets</p>
+          </div>
+          <button id="btnRefresh" class="btn btn-secondary" title="Tải lại dữ liệu">🔄 Làm mới</button>
+        </div>
+
+        <!-- Thống kê tổng quan -->
+        <div class="stats-grid">
+          <div class="stat-card stat-total">
+            <div class="stat-num" id="statTotal">0</div>
+            <div class="stat-label">Tổng số ca</div>
+          </div>
+          <div class="stat-card stat-new">
+            <div class="stat-num" id="statNew">0</div>
+            <div class="stat-label">Mới</div>
+          </div>
+          <div class="stat-card stat-processing">
+            <div class="stat-num" id="statProcessing">0</div>
+            <div class="stat-label">Đang xử lý</div>
+          </div>
+          <div class="stat-card stat-done">
+            <div class="stat-num" id="statDone">0</div>
+            <div class="stat-label">Hoàn thành</div>
+          </div>
+        </div>
+
+        <!-- Bộ lọc dữ liệu -->
+        <div class="filter-bar">
+          <div class="filter-item">
+            <label for="filterStatus">Trạng thái:</label>
+            <select id="filterStatus">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Mới">Mới</option>
+              <option value="Đang xử lý">Đang xử lý</option>
+              <option value="Hoàn thành">Hoàn thành</option>
+            </select>
+          </div>
+
+          <div class="filter-item">
+            <label for="filterCa">Ca:</label>
+            <select id="filterCa">
+              <option value="">Tất cả ca</option>
+              <option value="Sáng">Sáng</option>
+              <option value="Chiều">Chiều</option>
+            </select>
+          </div>
+
+          <div class="filter-item">
+            <label for="filterSearch">Tìm nhóm/ngày:</label>
+            <input type="text" id="filterSearch" placeholder="VD: NHOM-01 hoặc ngày...">
+          </div>
+        </div>
+
+        <!-- Bảng danh sách -->
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Thời gian</th>
+                <th>Mã nhóm</th>
+                <th>Trạm mô phỏng</th>
+                <th>Ca học</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr>
+                <td colspan="6" class="text-center text-muted">Đang tải dữ liệu...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
