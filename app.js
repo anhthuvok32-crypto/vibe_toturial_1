@@ -1,187 +1,145 @@
-/**
- * FRONTEND CONTROLLER - ĐỒNG BỘ 2 CHIỀU VỚI GOOGLE SHEETS BACKEND
- */
+// Lấy cấu hình URL API từ config.js hoặc mặc định localhost:5000
+const API_URL = (window.APP_CONFIG && window.APP_CONFIG.apiUrl) || 'http://localhost:5000/api/yeu-cau';
 
-let allRegistrations = [];
+const form = document.querySelector('#requestForm');
+const statusEl = document.querySelector('#status');
+const submitBtn = document.querySelector('#submitBtn');
+const refreshBtn = document.querySelector('#refreshBtn');
+const recordsBody = document.querySelector('#recordsBody');
 
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.querySelector('#requestForm');
-  const statusEl = document.querySelector('#status');
-  const btnSubmit = document.querySelector('#btnSubmit');
-  const btnRefresh = document.querySelector('#btnRefresh');
-  const filterStatus = document.querySelector('#filterStatus');
-  const filterCa = document.querySelector('#filterCa');
-  const filterSearch = document.querySelector('#filterSearch');
-
-  // 1. Kiểm tra cấu hình URL
-  const scriptUrl = window.APP_CONFIG ? window.APP_CONFIG.appsScriptUrl : '';
-  if (!scriptUrl || !scriptUrl.startsWith('https://script.google.com/')) {
-    showStatus(statusEl, 'Chưa cấu hình URL Apps Script hợp lệ trong config.js', 'error');
-    return;
+// Helper định dạng ngày giờ
+function formatDate(isoString) {
+  if (!isoString) return '-';
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch (e) {
+    return isoString;
   }
+}
 
-  // 2. Tải dữ liệu ban đầu
-  loadData();
+// -------------------------------------------------------------
+// 1. GET: Lấy danh sách yêu cầu mới nhất và render ra bảng HTML
+// -------------------------------------------------------------
+async function loadDanhSachYeuCau() {
+  if (!recordsBody) return;
 
-  // 3. Xử lý Gửi Đăng Ký (POST)
+  try {
+    recordsBody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; color: #627d98;">Đang tải danh sách...</td>
+      </tr>
+    `;
+
+    const response = await fetch(API_URL, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || `Lỗi máy chủ (${response.status})`);
+    }
+
+    const items = result.data || [];
+    if (items.length === 0) {
+      recordsBody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; color: #829ab1;">Chưa có bản ghi nào trong cơ sở dữ liệu.</td>
+        </tr>
+      `;
+      return;
+    }
+
+    recordsBody.innerHTML = items.map((item) => `
+      <tr>
+        <td><strong>#${item.id}</strong></td>
+        <td>${escapeHtml(item.ma_nhom || '')}</td>
+        <td>${escapeHtml(item.tram || '')}</td>
+        <td>${escapeHtml(item.ca || '')}</td>
+        <td><small style="color: #627d98;">${formatDate(item.created_at)}</small></td>
+      </tr>
+    `).join('');
+
+  } catch (error) {
+    console.error('Lỗi khi tải danh sách:', error);
+    recordsBody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; color: #d6336c;">
+          Không thể kết nối đến Backend (${error.message}). Hãy chắc chắn backend đang chạy tại ${API_URL}.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// Chống XSS khi render dữ liệu động
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// -------------------------------------------------------------
+// 2. POST: Gửi form đăng ký lên Backend API
+// -------------------------------------------------------------
+if (form) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData);
 
-    // Disable nút bấm và hiển thị trạng thái đang gửi
-    btnSubmit.disabled = true;
-    showStatus(statusEl, '⏳ Đang gửi đăng ký vào Google Sheets...', 'loading');
+    statusEl.className = 'status-loading';
+    statusEl.textContent = '⏳ Đang gửi dữ liệu lên Backend và lưu vào Supabase...';
+    submitBtn.disabled = true;
 
     try {
-      // Gửi request POST tới Apps Script Web App
-      // Lưu ý: Sử dụng no-cors hoặc text/plain JSON để tránh bị CORS preflight chặn trên Apps Script
-      await fetch(scriptUrl, {
+      const response = await fetch(API_URL, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(payload)
       });
 
-      showStatus(statusEl, '✅ Đã gửi đăng ký thành công vào Google Sheets!', 'success');
-      form.reset();
-
-      // Đợi 1.5s để Google Sheets cập nhật xong rồi tự động làm mới bảng danh sách
-      setTimeout(() => {
-        loadData();
-      }, 1500);
-
-    } catch (error) {
-      console.error('Lỗi khi gửi dữ liệu:', error);
-      showStatus(statusEl, `❌ Lỗi kết nối: ${error.message}`, 'error');
-    } finally {
-      btnSubmit.disabled = false;
-    }
-  });
-
-  // 4. Nút Làm mới
-  btnRefresh.addEventListener('click', () => {
-    loadData();
-  });
-
-  // 5. Sự kiện lọc
-  filterStatus.addEventListener('change', applyFilters);
-  filterCa.addEventListener('change', applyFilters);
-  filterSearch.addEventListener('input', applyFilters);
-
-  // --- HÀM TẢI DỮ LIỆU (GET) ---
-  async function loadData() {
-    const tableBody = document.querySelector('#tableBody');
-    tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">⏳ Đang đồng bộ dữ liệu từ Google Sheets...</td></tr>';
-    btnRefresh.disabled = true;
-
-    try {
-      const response = await fetch(scriptUrl);
       const result = await response.json();
 
-      if (result.status === 'success') {
-        // Lọc bỏ dòng tiêu đề nếu còn sót
-        allRegistrations = (result.data || []).filter(item => {
-          return item.maNhom && item.maNhom.toLowerCase() !== 'mã nhóm' && item.thoiGian !== 'Thời gian';
-        });
-
-        // Cập nhật thống kê
-        updateStats(result.stats, allRegistrations);
-
-        // Hiển thị danh sách
-        applyFilters();
-      } else {
-        tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Lỗi từ máy chủ: ${result.message}</td></tr>`;
+      if (!response.ok) {
+        throw new Error(result.message || 'Gửi yêu cầu không thành công');
       }
+
+      statusEl.className = 'status-success';
+      statusEl.textContent = '✅ Đăng ký thành công! Dữ liệu đã được lưu vào Supabase.';
+      form.reset();
+
+      // Cập nhật lại bảng danh sách ngay lập tức
+      await loadDanhSachYeuCau();
+
     } catch (error) {
-      console.error('Lỗi khi đọc dữ liệu:', error);
-      tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Không thể tải dữ liệu: ${error.message}</td></tr>`;
+      console.error('Lỗi gửi form:', error);
+      statusEl.className = 'status-error';
+      statusEl.textContent = `❌ Lỗi: ${error.message}`;
     } finally {
-      btnRefresh.disabled = false;
+      submitBtn.disabled = false;
     }
-  }
+  });
+}
 
-  // --- HÀM CẬP NHẬT THỐNG KÊ ---
-  function updateStats(serverStats, list) {
-    let total = list.length;
-    let newCount = 0;
-    let procCount = 0;
-    let doneCount = 0;
+// Nút làm mới danh sách thủ công
+if (refreshBtn) {
+  refreshBtn.addEventListener('click', loadDanhSachYeuCau);
+}
 
-    list.forEach(item => {
-      const st = (item.trangThai || '').toLowerCase();
-      if (st.includes('mới')) newCount++;
-      else if (st.includes('xử lý')) procCount++;
-      else if (st.includes('hoàn thành')) doneCount++;
-    });
-
-    document.querySelector('#statTotal').textContent = total;
-    document.querySelector('#statNew').textContent = newCount;
-    document.querySelector('#statProcessing').textContent = procCount;
-    document.querySelector('#statDone').textContent = doneCount;
-  }
-
-  // --- HÀM ÁP DỤNG BỘ LỌC ---
-  function applyFilters() {
-    const statusVal = filterStatus.value.toLowerCase();
-    const caVal = filterCa.value.toLowerCase();
-    const searchVal = filterSearch.value.trim().toLowerCase();
-
-    const filtered = allRegistrations.filter(item => {
-      const matchStatus = !statusVal || (item.trangThai || '').toLowerCase() === statusVal;
-      const matchCa = !caVal || (item.ca || '').toLowerCase().includes(caVal);
-      const matchSearch = !searchVal ||
-        (item.maNhom || '').toLowerCase().includes(searchVal) ||
-        (item.thoiGian || '').toLowerCase().includes(searchVal) ||
-        (item.tram || '').toLowerCase().includes(searchVal);
-
-      return matchStatus && matchCa && matchSearch;
-    });
-
-    renderTable(filtered);
-  }
-
-  // --- HÀM VẼ BẢNG ---
-  function renderTable(items) {
-    const tableBody = document.querySelector('#tableBody');
-    if (!items || items.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Không tìm thấy dữ liệu phù hợp.</td></tr>';
-      return;
-    }
-
-    tableBody.innerHTML = items.map((item, index) => {
-      const badgeClass = getBadgeClass(item.trangThai);
-      return `
-        <tr>
-          <td><strong>${index + 1}</strong></td>
-          <td>${escapeHtml(item.thoiGian || '')}</td>
-          <td><code>${escapeHtml(item.maNhom || '')}</code></td>
-          <td>${escapeHtml(item.tram || '')}</td>
-          <td>${escapeHtml(item.ca || '')}</td>
-          <td><span class="badge ${badgeClass}">${escapeHtml(item.trangThai || 'Mới')}</span></td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function getBadgeClass(status) {
-    if (!status) return 'badge-default';
-    const s = status.toLowerCase();
-    if (s.includes('mới')) return 'badge-new';
-    if (s.includes('xử lý')) return 'badge-processing';
-    if (s.includes('hoàn thành')) return 'badge-done';
-    return 'badge-default';
-  }
-
-  function showStatus(el, msg, type) {
-    el.className = `status-box ${type}`;
-    el.textContent = msg;
-  }
-
-  function escapeHtml(str) {
-    return str.replace(/[&<>'"]/g,
-      tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-    );
-  }
-});
+// Tự động tải danh sách khi vừa mở trang web
+document.addEventListener('DOMContentLoaded', loadDanhSachYeuCau);
